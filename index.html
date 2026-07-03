@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>大声朗读过关游戏 - 烟花庆祝版</title>
+    <style>
+        body {
+            background-color: #0b192c;
+            color: #e0f7fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        /* 烟花画布层 */
+        #fireworksCanvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none; /* 让鼠标穿透，不影响按钮点击 */
+            z-index: 9999;
+            display: none;
+        }
+
+        #main-controls {
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            text-align: center;
+            margin-bottom: 20px;
+            width: 90%;
+            max-width: 680px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            z-index: 10;
+        }
+
+        #toggle-bar {
+            background: rgba(0, 188, 212, 0.2);
+            padding: 10px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            color: #00bcd4;
+            transition: background 0.3s;
+            user-select: none;
+        }
+        #toggle-bar:hover { background: rgba(0, 188, 212, 0.5); color: #fff; }
+
+        #settings-panel {
+            padding: 20px 25px 10px 25px;
+            display: block;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        #action-panel {
+            padding: 20px 25px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .control-group { margin: 10px 0; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+        .row-group { flex-direction: row; justify-content: center; gap: 15px; width: 100%; }
+
+        input[type="number"] { width: 70px; font-size: 16px; text-align: center; border-radius: 6px; border: none; padding: 6px; background: rgba(255, 255, 255, 0.9); color: #333; font-weight: bold; }
+        .switch-label { display: flex; align-items: center; cursor: pointer; font-size: 16px; background: rgba(0, 0, 0, 0.2); padding: 8px 15px; border-radius: 8px; transition: background 0.3s; }
+        input[type="checkbox"] { width: 18px; height: 18px; margin-right: 10px; cursor: pointer; }
+        input[type="file"] { font-size: 14px; }
+        input[type="range"] { width: 100%; max-width: 300px; }
+
+        #countdown-area { font-size: 24px; color: #ffca28; margin-bottom: 5px; font-weight: bold; opacity: 0; transition: opacity 0.3s; z-index: 10;}
+        #countdown-num { font-size: 36px; color: #ff5252; }
+        #word-display { font-size: 120px; font-weight: bold; letter-spacing: 2px; text-shadow: 0 4px 10px rgba(0, 0, 0, 0.5); min-height: 160px; text-align: center; transition: transform 0.2s; z-index: 10;}
+        #heard-display { font-size: 20px; color: #b2ebf2; min-height: 30px; margin-top: -10px; margin-bottom: 10px; opacity: 0; transition: opacity 0.3s; z-index: 10;}
+        #status { font-size: 26px; color: #4CAF50; height: 40px; font-weight: bold; text-align: center; z-index: 10;}
+
+        .btn-group { display: flex; gap: 15px; }
+        button { padding: 10px 25px; font-size: 18px; font-weight: bold; background-color: #00bcd4; color: white; border: none; border-radius: 8px; cursor: pointer; transition: background-color 0.3s, transform 0.1s; }
+        button:disabled { background-color: #546e7a; color: #b0bec5; cursor: not-allowed; }
+        #restart-btn { background-color: #ff9800; display: none; }
+        progress { width: 100%; max-width: 400px; height: 18px; border-radius: 10px; }
+
+    </style>
+</head>
+<body>
+
+    <!-- 全屏烟花画布 -->
+    <canvas id="fireworksCanvas"></canvas>
+
+    <div id="main-controls">
+        <div id="toggle-bar">⚙️ 点击收起设置面板</div>
+
+        <div id="settings-panel">
+            <div class="control-group row-group">
+                <div style="display: flex; flex-direction: column; align-items: center; gap: 5px;">
+                    <label for="word-file" style="font-size: 15px;">📂 1. 上传单词 (TXT)</label>
+                    <input type="file" id="word-file" accept=".txt">
+                </div>
+                
+                <div style="display: flex; flex-direction: column; align-items: center; gap: 5px;">
+                    <label for="words-per-stage" style="font-size: 15px;">🎯 2. 过关单词数</label>
+                    <input type="number" id="words-per-stage" min="1" max="50" value="3">
+                </div>
+            </div>
+            
+            <div class="control-group">
+                <label for="threshold" style="font-size: 15px;">🎚️ 3. 达标音量 (<span id="threshold-val">50</span>)</label>
+                <input type="range" id="threshold" min="5" max="150" value="50">
+            </div>
+
+            <div class="control-group">
+                <label class="switch-label">
+                    <input type="checkbox" id="check-pronunciation" checked>
+                    ✅ 开启发音准确度检测 (不勾选则仅测音量)
+                </label>
+            </div>
+        </div>
+
+        <div id="action-panel">
+            <div class="btn-group">
+                <button id="start-btn">▶️ 开始闯关</button>
+                <button id="stop-btn" disabled>⏹️ 停止</button>
+                <button id="restart-btn">🔄 再来一轮</button>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: center; width: 100%; gap: 5px;">
+                <label style="font-size: 14px; color: #80deea;">🎤 麦克风实时音量：</label>
+                <progress id="volume-meter" value="0" max="150"></progress>
+            </div>
+        </div>
+    </div>
+
+    <div id="countdown-area">🎯 距离过关还差 <span id="countdown-num">3</span> 个单词</div>
+    <div id="word-display">等待上传...</div>
+    <div id="heard-display">系统听到: <span id="heard-text">...</span></div>
+    <div id="status"></div>
+
+    <script>
+        // 捕获所有致命错误
+        window.onerror = function(msg, source, lineno) {
+            const errDiv = document.createElement('div');
+            errDiv.style.cssText = "position:absolute; top:0; left:0; width:100%; background:white; color:red; padding:10px; border-bottom:3px solid red; z-index:99999; font-size:14px;";
+            errDiv.innerHTML = "❌ 发生错误: " + msg + " (行号: " + lineno + ")";
+            document.body.appendChild(errDiv);
+            return false;
+        };
+
+        // DOM 元素获取
+        const settingsPanel = document.getElementById('settings-panel');
+        const toggleBar = document.getElementById('toggle-bar');
+        const fileInput = document.getElementById('word-file');
+        const wordsPerStageInput = document.getElementById('words-per-stage');
+        const thresholdInput = document.getElementById('threshold');
+        const thresholdVal = document.getElementById('threshold-val');
+        const checkPronunciationInput = document.getElementById('check-pronunciation');
+        
+        const startBtn = document.getElementById('start-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const restartBtn = document.getElementById('restart-btn');
+        
+        const wordDisplay = document.getElementById('word-display');
+        const heardDisplay = document.getElementById('heard-display');
+        const heardText = document.getElementById('heard-text');
+        const volumeMeter = document.getElementById('volume-meter');
+        const statusDisplay = document.getElementById('status');
+        const countdownArea = document.getElementById('countdown-area');
+        const countdownNum = document.getElementById('countdown-num');
+
+        // ================= 烟花动画系统 =================
+        const fwCanvas = document.getElementById('fireworksCanvas');
+        const fwCtx = fwCanvas.getContext('2d');
+        let fwParticles = [];
+        let fwActive = false;
+
+        function resizeFwCanvas() {
+            fwCanvas.width = window.innerWidth;
+            fwCanvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeFwCanvas);
+        resizeFwCanvas();
+
+        function createFirework(x, y) {
+            const count = 60 + Math.random() * 40; // 粒子数量
+            const hue = Math.random() * 360;       // 随机颜色
+            for (let i = 0; i < count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 5 + 3;
+                fwParticles.push({
+                    x: x, y: y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    alpha: 1,
+                    hue: hue + Math.random() * 30 - 15,
+                    decay: Math.random() * 0.015 + 0.01
+                });
+            }
+        }
+
+        function loopFireworks() {
+            if (!fwActive) return;
+            requestAnimationFrame(loopFireworks);
+            fwCtx.clearRect(0, 0, fwCanvas.width, fwCanvas.height);
+            
+            // 持续随机燃放烟花
+            if (Math.random() < 0.06) {
+                createFirework(Math.random() * fwCanvas.width, Math.random() * fwCanvas.height * 0.6);
+            }
+
+            for (let i = fwParticles.length - 1; i >= 0; i--) {
+                let p = fwParticles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.08; // 重力下坠
+                p.alpha -= p.decay; // 逐渐消失
+                
+                if (p.alpha <= 0) {
+                    fwParticles.splice(i, 1);
+                    continue;
+                }
+                
+                fwCtx.globalAlpha = p.alpha;
+                fwCtx.fillStyle = `hsl(${p.hue}, 100%, 60%)`;
+                fwCtx.beginPath();
+                fwCtx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+                fwCtx.fill();
+            }
+        }
+
+        function startFireworks() {
+            if (fwActive) return;
+            fwActive = true;
+            fwCanvas.style.display = 'block';
+            createFirework(fwCanvas.width / 2, fwCanvas.height / 3); // 屏幕中间首发
+            loopFireworks();
+        }
+
+        function stopFireworks() {
+            fwActive = false;
+            fwCanvas.style.display = 'none';
+            fwParticles = [];
+            fwCtx.clearRect(0, 0, fwCanvas.width, fwCanvas.height);
+        }
+        // ===============================================
+
+        // 核心逻辑变量
+        let rawWordLibrary = [];  
+        let activeWords = [];      
+        let currentWordIndex = 0;
+        let wordsPerStage = 3; 
+        let wordsLeftToPass = 3;
+        let isDetecting = false;
+        let threshold = 50;
+        let isSettingsOpen = true;
+
+        let mediaStream = null;
+        let audioContext = null;
+        let analyser = null;
+        let javascriptNode = null;
+        let recognition = null;
+        let isRecognitionActive = false;
+        let maxVolumeSinceLastWord = 0; 
+
+        // 语音检测支持预判
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        setTimeout(function() {
+            if (!SpeechRecognition) {
+                if (checkPronunciationInput) {
+                    checkPronunciationInput.checked = false;
+                    checkPronunciationInput.disabled = true;
+                }
+                statusDisplay.textContent = "⚠️ 设备不支持发音检测，已自动切换为纯测音量模式！";
+                statusDisplay.style.color = "#ff9800";
+            }
+        }, 500);
+
+        // UI 绑定：折叠面板
+        toggleBar.addEventListener('click', function() {
+            isSettingsOpen = !isSettingsOpen;
+            settingsPanel.style.display = isSettingsOpen ? 'block' : 'none';
+            toggleBar.innerHTML = isSettingsOpen ? '⚙️ 点击收起设置面板' : '⚙️ 点击展开设置面板 (上传文件/调难度)';
+        });
+
+        // UI 绑定：滑块与数字输入
+        thresholdInput.addEventListener('input', function() {
+            threshold = this.value;
+            thresholdVal.textContent = threshold;
+        });
+
+        wordsPerStageInput.addEventListener('change', function() {
+            let val = parseInt(this.value, 10);
+            if (val < 1 || isNaN(val)) { val = 1; this.value = 1; }
+            wordsPerStage = val;
+            if (!isDetecting) {
+                wordsLeftToPass = wordsPerStage;
+                countdownNum.textContent = wordsLeftToPass;
+            }
+        });
+
+        // 核心：处理文件读取
+        fileInput.addEventListener('change', async function() {
+            const file = this.files[0];
+            if (!file) return;
+
+            if (!file.name.toLowerCase().endsWith('.txt')) {
+                statusDisplay.textContent = "❌ 请上传 .txt 格式的文本文件！";
+                statusDisplay.style.color = "#ff5252";
+                this.value = ''; 
+                return;
+            }
+
+            try {
+                const textContent = await file.text(); 
+                rawWordLibrary = textContent.split(/\r?\n/).map(w => w.trim()).filter(w => w.length > 0);
+                
+                if (rawWordLibrary.length > 0) {
+                    resetGameData();
+                    statusDisplay.textContent = `✅ 成功加载了 ${rawWordLibrary.length} 个单词！`;
+                    statusDisplay.style.color = "#4CAF50";
+                } else {
+                    wordDisplay.textContent = "文件为空";
+                    statusDisplay.textContent = "❌ 读取不到单词，请检查 TXT 文件内容！";
+                    statusDisplay.style.color = "#ff5252";
+                }
+            } catch (err) {
+                console.error("读取出错:", err);
+                statusDisplay.textContent = "❌ 读取文件失败，请更换最新浏览器！";
+                statusDisplay.style.color = "#ff5252";
+            }
+            this.value = ''; 
+        });
+
+        startBtn.addEventListener('click', startGame);
+        stopBtn.addEventListener('click', function() {
+            stopFireworks();
+            stopDetectionSystem();
+        });
+        restartBtn.addEventListener('click', function() {
+            stopFireworks();
+            resetGameData();
+            startGame();
+        });
+
+        // 洗牌与数据准备
+        function shuffleArray(array) {
+            const arr = [...array];
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        }
+
+        // 绝对重置：每次重新开始都重新洗牌，并精确取出设定的单词数量
+        function generateActiveWords() {
+            if (rawWordLibrary.length === 0) return;
+            let shuffled = shuffleArray(rawWordLibrary);
+            while (shuffled.length < wordsPerStage) {
+                shuffled = shuffled.concat(shuffleArray(rawWordLibrary));
+            }
+            // 严格截取老师设置的长度（例如：设定3个，这里就只有3个单词）
+            activeWords = shuffled.slice(0, wordsPerStage);
+        }
+
+        function resetGameData() {
+            currentWordIndex = 0;
+            wordsPerStage = parseInt(wordsPerStageInput.value, 10); 
+            wordsLeftToPass = wordsPerStage;
+            maxVolumeSinceLastWord = 0;
+            
+            generateActiveWords(); 
+            if (activeWords.length > 0) {
+                wordDisplay.textContent = activeWords[currentWordIndex];
+            }
+            countdownNum.textContent = wordsLeftToPass;
+        }
+
+        // ================= 极度安全的资源清理系统 =================
+        function cleanupAudioResources() {
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                mediaStream = null;
+            }
+            if (audioContext && audioContext.state !== 'closed') {
+                audioContext.close();
+                audioContext = null;
+            }
+            if (javascriptNode) {
+                javascriptNode.onaudioprocess = null;
+                javascriptNode.disconnect();
+                javascriptNode = null;
+            }
+            if (recognition) {
+                recognition.onend = null; 
+                try { recognition.abort(); } catch(e){}
+                recognition = null;
+            }
+            isRecognitionActive = false;
+        }
+
+        function stopDetectionSystem() {
+            isDetecting = false;
+            startBtn.disabled = false; 
+            stopBtn.disabled = true;
+            
+            wordsPerStageInput.disabled = false; 
+            checkPronunciationInput.disabled = false; 
+            
+            // 恢复 UI 面板
+            isSettingsOpen = true;
+            settingsPanel.style.display = 'block';
+            toggleBar.innerHTML = '⚙️ 点击收起设置面板';
+
+            volumeMeter.value = 0;
+            countdownArea.style.opacity = 0;
+            heardDisplay.style.opacity = 0;
+            
+            if (currentWordIndex < activeWords.length) wordDisplay.textContent = "已暂停";
+            statusDisplay.textContent = "";
+
+            cleanupAudioResources();
+        }
+
+        // ================= 开始游戏主程序 =================
+        async function startGame() {
+            if (rawWordLibrary.length === 0) {
+                statusDisplay.textContent = "⚠️ 请先在上方【第一步】上传 TXT 格式的单词表！";
+                statusDisplay.style.color = "#ffca28";
+                return;
+            }
+
+            if (currentWordIndex >= activeWords.length || activeWords.length === 0) {
+                resetGameData(); 
+            }
+            
+            startBtn.disabled = true;
+            statusDisplay.textContent = "⏳ 正在连接麦克风，请稍候...";
+            statusDisplay.style.color = "#b2ebf2";
+
+            try {
+                cleanupAudioResources();
+
+                mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                const microphoneSource = audioContext.createMediaStreamSource(mediaStream);
+                javascriptNode = audioContext.createScriptProcessor(2048, 1, 1);
+                analyser.smoothingTimeConstant = 0.8;
+                analyser.fftSize = 1024;
+
+                microphoneSource.connect(analyser);
+                analyser.connect(javascriptNode);
+                javascriptNode.connect(audioContext.destination);
+
+                const requirePronunciation = checkPronunciationInput.checked;
+
+                if (requirePronunciation) {
+                    if (!SpeechRecognition) {
+                        alert("⚠️ 您的设备不支持发音检测，已切换为纯音量过关！");
+                        checkPronunciationInput.checked = false;
+                        heardDisplay.style.opacity = 0;
+                    } else {
+                        setupSpeechRecognition();
+                        try { recognition.start(); } catch(e){}
+                        heardDisplay.style.opacity = 1;
+                        heardText.textContent = "...";
+                    }
+                } else {
+                    heardDisplay.style.opacity = 0; 
+                }
+
+                isDetecting = true;
+                maxVolumeSinceLastWord = 0;
+                
+                // 更新 UI
+                isSettingsOpen = false;
+                settingsPanel.style.display = 'none';
+                toggleBar.innerHTML = '⚙️ 点击展开设置面板 (上传文件/调难度)';
+
+                stopBtn.disabled = false;
+                restartBtn.style.display = 'none';
+                wordsPerStageInput.disabled = true; 
+                checkPronunciationInput.disabled = true; 
+                
+                statusDisplay.textContent = requirePronunciation ? "请大声且准确地朗读！" : "只要声音够大就能过关！";
+                statusDisplay.style.color = "#4CAF50";
+                countdownArea.style.opacity = 1;
+                
+                if (activeWords.length > 0) wordDisplay.textContent = activeWords[currentWordIndex];
+                countdownNum.textContent = wordsLeftToPass;
+
+                // 实时音量解析
+                javascriptNode.onaudioprocess = function() {
+                    if (!isDetecting) return;
+                    const array = new Uint8Array(analyser.frequencyBinCount);
+                    analyser.getByteFrequencyData(array);
+                    let values = 0;
+                    for (let i = 0; i < array.length; i++) values += array[i];
+                    
+                    const averageVolume = values / array.length;
+                    volumeMeter.value = averageVolume;
+                    
+                    if (requirePronunciation) {
+                        if (averageVolume > maxVolumeSinceLastWord) maxVolumeSinceLastWord = averageVolume;
+                    } else {
+                        if (averageVolume >= threshold) handleWordSuccess();
+                    }
+                }
+            } catch (err) {
+                console.error("启动失败详情:", err);
+                statusDisplay.textContent = "⚠️ 无法访问麦克风！请确保浏览器有麦克风权限！";
+                statusDisplay.style.color = "#ff5252";
+                startBtn.disabled = false; 
+                cleanupAudioResources();
+            }
+        }
+
+        // ================= 发音识别配置 =================
+        function setupSpeechRecognition() {
+            if (!SpeechRecognition) return;
+
+            recognition = new SpeechRecognition();
+            recognition.continuous = false;   
+            recognition.interimResults = true;  
+            recognition.lang = 'en-US';         
+
+            recognition.onstart = () => { isRecognitionActive = true; };
+
+            recognition.onspeechstart = () => {
+                if (isDetecting) maxVolumeSinceLastWord = 0; 
+            };
+
+            recognition.onresult = (event) => {
+                if (!isDetecting || !checkPronunciationInput.checked) return;
+                let transcript = '';
+                for (let i = 0; i < event.results.length; ++i) {
+                    transcript += event.results[i][0].transcript;
+                }
+                
+                const heardStr = transcript.trim().toLowerCase().replace(/[.,!?;:]/g, '');
+                heardText.textContent = heardStr;
+                
+                if (!activeWords || currentWordIndex >= activeWords.length) return;
+                const targetWord = activeWords[currentWordIndex].toLowerCase();
+
+                if (heardStr.includes(targetWord)) {
+                    if (maxVolumeSinceLastWord >= threshold) {
+                        handleWordSuccess();
+                    } else {
+                        statusDisplay.textContent = "🔊 读对了，但是声音太小啦！";
+                        statusDisplay.style.color = "#ff9800";
+                    }
+                }
+            };
+
+            recognition.onend = () => {
+                isRecognitionActive = false;
+                if (isDetecting && checkPronunciationInput.checked && recognition) {
+                    setTimeout(() => {
+                        if (isDetecting && !isRecognitionActive) { 
+                            try { recognition.start(); } catch(e){} 
+                        }
+                    }, 50);
+                }
+            };
+        }
+
+        function handleWordSuccess() {
+            isDetecting = false; 
+            volumeMeter.value = 0;
+            
+            if (recognition) {
+                try { recognition.abort(); } catch(e){}
+            }
+
+            wordsLeftToPass--;
+            countdownNum.textContent = wordsLeftToPass;
+            
+            wordDisplay.style.transform = "scale(1.2)";
+            setTimeout(() => wordDisplay.style.transform = "scale(1)", 200);
+
+            const requirePronunciation = checkPronunciationInput.checked;
+
+            if (wordsLeftToPass <= 0) {
+                // 终极通关：直接触发烟花和成功状态！
+                playPassSound();
+                statusDisplay.textContent = requirePronunciation ? "🎉 恭喜完成！发音准确，声音洪亮！" : "🎉 恭喜完成！任务达标！";
+                statusDisplay.style.color = "#ffca28";
+                startFireworks(); // 放烟花！
+                setTimeout(() => { nextWord(true); }, 2000); 
+            } else {
+                playDingSound();
+                statusDisplay.textContent = requirePronunciation ? "👍 完美！继续下一个！" : "👍 声音够大！继续！";
+                statusDisplay.style.color = "#4CAF50";
+                setTimeout(() => { nextWord(false); }, 1000); 
+            }
+        }
+
+        function nextWord(isStageClear) {
+            currentWordIndex++;
+            if (currentWordIndex < activeWords.length) {
+                // 没完成设定的个数，继续切下一个
+                statusDisplay.textContent = "";
+                if (checkPronunciationInput.checked) heardText.textContent = "...";
+                maxVolumeSinceLastWord = 0; 
+                wordDisplay.textContent = activeWords[currentWordIndex];
+                
+                isDetecting = true;
+                if (checkPronunciationInput.checked && recognition && !isRecognitionActive) {
+                    setTimeout(() => { try { recognition.start(); } catch(e){} }, 50);
+                }
+            } else {
+                // 已完成全部设定个数
+                finishAllWords();
+            }
+        }
+
+        function finishAllWords() {
+            wordDisplay.textContent = "🏆 任务达成！";
+            statusDisplay.textContent = "太棒了！你已经完成了本次设定的目标！";
+            statusDisplay.style.color = "#4CAF50";
+            
+            stopDetectionSystem();
+            restartBtn.style.display = 'inline-block'; 
+            // 烟花会继续燃放，直到用户点击"再来一轮"或者"停止"
+        }
+
+        // ================= 音效合成系统 =================
+        function playDingSound() {
+            if (!audioContext || audioContext.state === 'closed') return;
+            const osc = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+            osc.connect(gain); gain.connect(audioContext.destination);
+            osc.type = 'triangle';
+            const now = audioContext.currentTime;
+            osc.frequency.setValueAtTime(880, now);
+            gain.gain.setValueAtTime(0.3, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+            osc.start(now); osc.stop(now + 0.3);
+        }
+
+        function playPassSound() {
+            if (!audioContext || audioContext.state === 'closed') return;
+            const osc = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+            osc.connect(gain); gain.connect(audioContext.destination);
+            osc.type = 'sine';
+            const now = audioContext.currentTime;
+            osc.frequency.setValueAtTime(523.25, now); 
+            osc.frequency.setValueAtTime(659.25, now + 0.15); 
+            osc.frequency.setValueAtTime(783.99, now + 0.3); 
+            osc.frequency.setValueAtTime(1046.50, now + 0.45); 
+            gain.gain.setValueAtTime(0.5, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 1.0);
+            osc.start(now); osc.stop(now + 1.0);
+        }
+    </script>
+</body>
+</html>
